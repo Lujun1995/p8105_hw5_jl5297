@@ -4,4 +4,68 @@ author: "JunLu"
 date: "11/1/2018"
 output: github_document
 ---
+```{r setup, include=FALSE}
+library(readxl)
+library(tidyverse)
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+theme_set(theme_bw() + theme(legend.position = "bottom"))
+```
 
+## Overview
+This my fifth-week homework and I am practicing iteration through this homework.
+
+## Problem 1
+### 1. Clean data
+```{r, message=FALSE}
+study_df = 
+    tibble(file_name = list.files(path = "./data")) %>% 
+    mutate(study_data = map(str_c("./data/", file_name), ~read_csv(.x))) %>% 
+    unnest() %>%
+    separate(file_name, into = c("group", "subject_id"), sep = "_") %>% 
+    gather(key = "week", value = "value", week_1:week_8) %>% 
+    mutate(subject_id = str_replace(subject_id, ".csv", ""),
+           week = str_replace(week, "week_", ""),
+           week = as.integer(week)) %>% 
+    arrange(group, subject_id, week)
+
+str(study_df)
+```
+
+* We use `purrr::map` to load the data of each csv file and combine them into one dataset. 
+* We keep file names and transform them into two variables (`group` and `subject_id`).
+* We use `gather` to go from wide to long formats. 
+
+As a result, this tidy dataset contains `r nrow(study_df)` observations and `r ncol(study_df)` variables.
+
+* `group`: (chr) denote which group this subject is belong to, experiment or control group
+* `subject_id`: (chr) id number of the subject
+* `week`: (int) week of the observation
+* `value`: (num) observation vlaue
+
+
+### 2. Make a spaghetti plot
+```{r, message=FALSE}
+study_df %>% 
+    mutate(id = str_c(group, subject_id)) %>% 
+    ggplot(aes(x = week, y = value, color = group)) + 
+    geom_line(aes(group = id)) +
+    geom_smooth(se = F, size = 2) +
+    labs(
+        title = "Spaghetti Plot of Observations on Each Subject over Time",
+        x = "Week",
+        y = "Observation Value"
+    )
+```
+
+Make a spaghetti plot showing observations on each subject over time. 
+From the plot, we can know that 
+
+* Participants in experiment group tended to have a growth trend of observation value over weeks.
+* Participants in control group tended to have a relatively steady observation value over weeks.
+
+##
