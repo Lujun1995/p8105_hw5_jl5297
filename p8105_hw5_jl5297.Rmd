@@ -9,7 +9,7 @@ library(readxl)
 library(tidyverse)
 knitr::opts_chunk$set(
   collapse = TRUE,
-  fig.width = 6,
+  fig.width = 8,
   fig.asp = .6,
   out.width = "90%"
 )
@@ -23,14 +23,17 @@ This my fifth-week homework and I am practicing iteration through this homework.
 ### 1. Clean data
 ```{r, message=FALSE}
 study_df = 
-    tibble(file_name = list.files(path = "./data")) %>% 
-    mutate(study_data = map(str_c("./data/", file_name), ~read_csv(.x))) %>% 
+    tibble(file_name = list.files(path = "./data/study")) %>% 
+    mutate(study_data = map(str_c("./data/study/", file_name), ~read_csv(.x))) %>% 
     unnest() %>%
     separate(file_name, into = c("group", "subject_id"), sep = "_") %>% 
     gather(key = "week", value = "value", week_1:week_8) %>% 
-    mutate(subject_id = str_replace(subject_id, ".csv", ""),
-           week = str_replace(week, "week_", ""),
-           week = as.integer(week)) %>% 
+    mutate(
+        subject_id = str_replace(subject_id, ".csv", ""),
+        week = str_replace(week, "week_", ""),
+        week = as.integer(week),
+        group = factor(group, levels = c("con", "exp"), labels = c("control", "experiment"))
+        ) %>% 
     arrange(group, subject_id, week)
 
 str(study_df)
@@ -42,7 +45,7 @@ str(study_df)
 
 As a result, this tidy dataset contains `r nrow(study_df)` observations and `r ncol(study_df)` variables.
 
-* `group`: (chr) denote which group this subject is belong to, experiment or control group
+* `group`: (factor) denote which group this subject is belong to, experiment or control group
 * `subject_id`: (chr) id number of the subject
 * `week`: (int) week of the observation
 * `value`: (num) observation vlaue
@@ -67,5 +70,103 @@ From the plot, we can know that
 
 * Participants in experiment group tended to have a growth trend of observation value over weeks.
 * Participants in control group tended to have a relatively steady observation value over weeks.
+* Participants in experiment group tended to have higher observation value than participants in control group over weeks.
 
-##
+## Problem 2
+### 1. Read the data
+```{r}
+homicide = read_csv("./data/homicide-data.csv", col_types = "cccccccccddc")
+str(homicide)
+```
+We load the raw data from "homicide-data.csv" and it contains `r nrow(homicide)` observations and `r ncol(homicide)` variables. The data included the location of the killing, whether an arrest was made and, in most cases, basic demographic information about each victim.
+
+* `uid`: (chr) unique identifier for each homicide record
+* `reported_date`: (chr) reported date 
+* `victim_last`: (chr) victim last name
+* `victim_first`: (chr) victim first name
+* `victim_race`: (chr) victim race
+* `victim_age`: (chr) victim age
+* `victim_sex`: (chr) victim age
+* `city`: (chr) occurrence city
+* `state`: (chr) occurrence state
+* `lat`: (num) occurrence latitude
+* `lon`: (num) occurrence longitude
+* `disposition`: dispostion result(whether an arrest was made)
+
+### 2. Clean the data
+```{r}
+homicide_tidy = 
+    homicide %>% 
+    mutate(city_state = str_c(city, ", ", state)) %>% 
+    group_by(city_state) %>% 
+    summarize(
+        total_num = n(), 
+        unsolved_num = sum(disposition %in% c("Closed without arrest", "Open/No arrest"))
+        )
+
+str(homicide_tidy)
+```
+* Create a `city_state` variable by combining the `city` and `state`
+* Summarize within cities to obtain the total number of homicides(`total_num`) and the number of unsolved homicides(`unsolved_num`)
+* Final dataset contains `r nrow(homicide_tidy)` observations and `r ncol(homicide_tidy)` variables. There are 3 variables including `city_state`, `total_num` and `unsolved_num`.
+
+### 3. Solutions to the problems
+
+#### a. For the city of Baltimore, MD, find the estimate and the CI of the unsolved homicides proportion.
+```{r}
+baltimore = 
+    homicide_tidy %>% 
+    filter(city_state == "Baltimore, MD")  
+
+baltimore_prop = prop.test(baltimore$unsolved_num, baltimore$total_num)
+    
+baltimore_prop %>% 
+    broom::tidy() %>% 
+    select(estimate, conf.low, conf.high) %>% 
+    knitr::kable(digits = 3)
+```
+
+For the city of Baltimore, MD, the estimated proportion is 0.645 and the confidence interval is (0.628, 0.663)
+
+#### b. Create a tidy dataframe with estimated proportions and CIs for each city
+```{r, message=FALSE}
+prop = function(x, n){
+    prop.test(x, n) %>% 
+        broom::tidy() %>% 
+        select(estimate, conf.low, conf.high)
+}
+
+homicide_prop = 
+    homicide_tidy %>% 
+    mutate(prop = map2(.x = unsolved_num, .y = total_num, ~prop(x = .x, n = .y))) %>% 
+    unnest() %>%  
+    janitor::clean_names() %>% 
+    select(-total_num, -unsolved_num) %>% 
+    mutate(
+        estimate = round(estimate, 3),
+        conf_low = round(conf_low, 3),
+        conf_high = round(conf_high, 3)
+    ) 
+
+str(homicide_prop)
+```
+We create a function to do `prop.test` and extract the estimate and the CI from the result. And then use `purrr::map2`, list columns and  unnest to create a tidy dataframe with estimated proportions and CIs for each city. Notably, for some cities Chi-squared approximation may be incorrect.
+
+The homicide_prop dataset contains `r nrow(homicide_prop)` observations and `r ncol(homicide_prop)` variables including `city_state`, `estimate`, `conf_low` and `conf_high`.
+
+#### c. Create a plot that shows the estimates and CIs for each city
+```{r}
+homicide_prop %>% 
+    mutate(city_state = forcats::fct_reorder(city_state, estimate, .desc = T)) %>% 
+    ggplot(aes(x = city_state, y = estimate)) +
+    geom_errorbar(aes(x = city_state, ymin = conf_low, ymax = conf_high)) +
+    geom_point(color = "blue") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    labs(
+        title = "Estimates and CIs of the Unsolved Homicides Proportion for Each City ",
+        y = "Proportion Value",
+        x = "City"
+    )
+```
+
+From the plot we can know clearly that the estimated proportion of unsolved homicides in Chicago is the largest. 
