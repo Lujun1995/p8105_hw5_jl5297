@@ -7,6 +7,8 @@ output: github_document
 ```{r setup, include=FALSE}
 library(readxl)
 library(tidyverse)
+library(httr)
+
 knitr::opts_chunk$set(
   collapse = TRUE,
   fig.width = 8,
@@ -54,9 +56,8 @@ As a result, this tidy dataset contains `r nrow(study_df)` observations and `r n
 ### 2. Make a spaghetti plot
 ```{r, message=FALSE}
 study_df %>% 
-    mutate(id = str_c(group, subject_id)) %>% 
     ggplot(aes(x = week, y = value, color = group)) + 
-    geom_line(aes(group = id)) +
+    geom_line(aes(group = interaction(group, subject_id))) +
     geom_smooth(se = F, size = 2) +
     labs(
         title = "Spaghetti Plot of Observations on Each Subject over Time",
@@ -73,15 +74,17 @@ From the plot, we can know that
 * Participants in experiment group tended to have higher observation value than participants in control group over weeks.
 
 ## Problem 2
-### 1. Read the data
-```{r}
-homicide = read_csv("./data/homicide-data.csv", col_types = "cccccccccddc")
+### 1. Get and read the data
+```{r, message=FALSE}
+url = "https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv"
+homicide = GET(url) %>% content("raw") %>% read_csv
+
 str(homicide)
 ```
-We load the raw data from "homicide-data.csv" and it contains `r nrow(homicide)` observations and `r ncol(homicide)` variables. The data included the location of the killing, whether an arrest was made and, in most cases, basic demographic information about each victim.
+We load the raw data from [GitHub repository](https://github.com/washingtonpost/data-homicides) and it contains `r nrow(homicide)` observations and `r ncol(homicide)` variables. The data included the location of the killing, whether an arrest was made and, in most cases, basic demographic information about each victim.
 
 * `uid`: (chr) unique identifier for each homicide record
-* `reported_date`: (chr) reported date 
+* `reported_date`: (int) reported date 
 * `victim_last`: (chr) victim last name
 * `victim_first`: (chr) victim first name
 * `victim_race`: (chr) victim race
@@ -91,7 +94,7 @@ We load the raw data from "homicide-data.csv" and it contains `r nrow(homicide)`
 * `state`: (chr) occurrence state
 * `lat`: (num) occurrence latitude
 * `lon`: (num) occurrence longitude
-* `disposition`: dispostion result(whether an arrest was made)
+* `disposition`: (chr) dispostion result(whether an arrest was made)
 
 ### 2. Clean the data
 ```{r}
